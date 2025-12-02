@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamElements TTS</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        h1 {
+            text-align: center;
+            color: #00b4d8;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #90e0ef;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #16213e;
+            color: #fff;
+            font-size: 14px;
+        }
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #00b4d8;
+        }
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        .char-count {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .char-count.warning {
+            color: #f4a261;
+        }
+        .char-count.error {
+            color: #e76f51;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #00b4d8;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #0096c7;
+        }
+        button:disabled {
+            background: #333;
+            cursor: not-allowed;
+        }
+        .audio-container {
+            margin-top: 20px;
+        }
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        .error-msg {
+            background: #e76f51;
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        .token-help {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .token-help a {
+            color: #00b4d8;
+        }
+        .btn-row {
+            display: flex;
+            gap: 10px;
+        }
+        .btn-row button {
+            flex: 1;
+        }
+        .btn-secondary {
+            background: #333;
+        }
+        .btn-secondary:hover {
+            background: #444;
+        }
+    </style>
+</head>
+<body>
+    <h1>StreamElements TTS - Brian</h1>
+
+    <div class="form-group">
+        <label for="token">JWT Token</label>
+        <input type="text" id="token" placeholder="Paste your JWT token here">
+        <p class="token-help">
+            Get your token from <a href="https://streamelements.com/dashboard/account/channels" target="_blank">StreamElements Dashboard</a>
+            → Account → Channels → Show secrets → JWT Token
+        </p>
+    </div>
+
+    <div class="form-group">
+        <label for="text">Message</label>
+        <textarea id="text" placeholder="Enter your TTS message..." maxlength="500"></textarea>
+        <div class="char-count"><span id="charCount">0</span>/500</div>
+    </div>
+
+    <div class="btn-row">
+        <button id="speakBtn" onclick="speak()">Speak</button>
+        <button id="downloadBtn" class="btn-secondary" onclick="download()" disabled>Download</button>
+    </div>
+
+    <div id="error" class="error-msg"></div>
+
+    <div class="audio-container">
+        <audio id="audio" controls></audio>
+    </div>
+
+    <script>
+        const tokenInput = document.getElementById('token');
+        const textArea = document.getElementById('text');
+        const charCount = document.getElementById('charCount');
+        const speakBtn = document.getElementById('speakBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const audioEl = document.getElementById('audio');
+        const errorDiv = document.getElementById('error');
+
+        let currentBlobUrl = null;
+
+        // Load saved token from localStorage
+        const savedToken = localStorage.getItem('se_jwt_token');
+        if (savedToken) tokenInput.value = savedToken;
+
+        // Save token when changed
+        tokenInput.addEventListener('change', () => {
+            localStorage.setItem('se_jwt_token', tokenInput.value);
+        });
+
+        // Character counter
+        textArea.addEventListener('input', () => {
+            const len = textArea.value.length;
+            charCount.textContent = len;
+            charCount.parentElement.className = 'char-count';
+            if (len > 450) charCount.parentElement.classList.add('warning');
+            if (len >= 500) charCount.parentElement.classList.add('error');
+        });
+
+        // Ctrl+Enter to submit
+        textArea.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                speak();
+            }
+        });
+
+        function showError(msg) {
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            errorDiv.style.display = 'none';
+        }
+
+        async function speak() {
+            hideError();
+
+            const token = tokenInput.value.trim();
+            const text = textArea.value.trim();
+
+            if (!token) {
+                showError('Please enter your JWT token');
+                return;
+            }
+            if (!text) {
+                showError('Please enter a message');
+                return;
+            }
+
+            // Save token
+            localStorage.setItem('se_jwt_token', token);
+
+            speakBtn.disabled = true;
+            speakBtn.textContent = 'Loading...';
+
+            try {
+                const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(text)}`;
+
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'audio/mpeg'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API Error ${response.status}: ${errorText}`);
+                }
+
+                const blob = await response.blob();
+
+                // Revoke previous blob URL to prevent memory leak
+                if (currentBlobUrl) {
+                    URL.revokeObjectURL(currentBlobUrl);
+                }
+
+                currentBlobUrl = URL.createObjectURL(blob);
+                audioEl.src = currentBlobUrl;
+                audioEl.play();
+
+                downloadBtn.disabled = false;
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                speakBtn.disabled = false;
+                speakBtn.textContent = 'Speak';
+            }
+        }
+
+        function download() {
+            if (!currentBlobUrl) return;
+
+            const text = textArea.value.trim();
+            const filename = text.substring(0, 30).replace(/[^a-z0-9]/gi, '_') + '.mp3';
+
+            const a = document.createElement('a');
+            a.href = currentBlobUrl;
+            a.download = filename;
+            a.click();
+        }
+    </script>
+</body>
+</html>

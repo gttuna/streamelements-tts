@@ -191,6 +191,16 @@
             errorDiv.style.display = 'none';
         }
 
+        function extractAuthToken(jwt) {
+            try {
+                const payload = jwt.split('.')[1];
+                const decoded = JSON.parse(atob(payload));
+                return decoded.authToken;
+            } catch (e) {
+                return null;
+            }
+        }
+
         async function speak() {
             hideError();
 
@@ -206,6 +216,13 @@
                 return;
             }
 
+            // Extract authToken from JWT
+            const authToken = extractAuthToken(token);
+            if (!authToken) {
+                showError('Invalid JWT token - could not extract authToken');
+                return;
+            }
+
             // Save token
             localStorage.setItem('se_jwt_token', token);
 
@@ -213,14 +230,9 @@
             speakBtn.textContent = 'Loading...';
 
             try {
-                const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(text)}`;
+                const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(text)}&key=${encodeURIComponent(authToken)}`;
 
-                const response = await fetch(url, {
-                    headers: {
-                        'Authorization': `oAuth ${token}`,
-                        'Accept': 'audio/mpeg'
-                    }
-                });
+                const response = await fetch(url);
 
                 if (!response.ok) {
                     const errorText = await response.text();

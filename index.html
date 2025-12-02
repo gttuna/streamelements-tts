@@ -217,7 +217,7 @@
 
                 const response = await fetch(url, {
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Authorization': `oAuth ${token}`,
                         'Accept': 'audio/mpeg'
                     }
                 });
